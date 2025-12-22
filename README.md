@@ -1,7 +1,7 @@
 # Docker Authentik Stack
 
 
-## Created needed folders
+## Create needed folders
 
 ```bash
 mkdir -p /opt/docker/volumes/authentik/authentik-data/media
