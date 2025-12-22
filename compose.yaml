@@ -1,0 +1,251 @@
+x-usage: &default-usage
+  # Max Usage Limits
+  mem_limit: ${MEM_LIMIT:-2G} # Override per container if necessary
+  memswap_limit: ${MEM_SWAP_LIMIT:-2.5G}
+  mem_reservation: ${MEM_RESERVATION:-64M}
+  pids_limit: ${PIDS_LIMIT:-200}
+  cpus: ${CPUS_LIMIT:-2} # Set below the total number of cores, for example 3.5 for 4 cores
+
+x-restart: &default-restart
+  # Restart Settings
+  stop_grace_period: ${RESTART_GRACE:-1m}
+  restart: ${RESTART_MODE:-unless-stopped}
+
+x-security: &default-security
+  # Configure User and Security Opts
+  user: ${PUID:-1000}:${PGID:-1000}
+  security_opt:
+   - no-new-privileges=true
+
+x-logging: &default-logging
+  # Configure Logging
+  logging:
+    options:
+      max-size: ${LOG_MAX_SIZE:-10m}
+      max-file: ${LOG_MAX_FILE:-3}
+
+x-base: &default-base
+  <<: [*default-usage, *default-restart, *default-security, *default-logging]
+
+x-healthcheck: &default-healthcheck
+  interval: ${HEALTH_INTERVAL:-60s}
+  timeout: ${HEALTH_TIMEOUT:-10s}
+  retries: ${HEALTH_RETRIES:-5}
+  start_period: ${HEALTH_START:-10s}
+
+x-environment: &default-environment
+  TZ: ${TZ:-America/Chicago}
+  #PUID: ${PUID:-1000}
+  #PGID: ${PGID:-1000}
+ 
+# Compose Project Name
+name: ${PROJECT_NAME}
+
+services:
+  postgres:
+    <<: [*default-usage, *default-restart, *default-logging]
+    image: docker.io/library/postgres:${POSTGRES_VERSION:-latest}
+    container_name: ${PROJECT_NAME}.postgres
+    shm_size: 128mb # https://hub.docker.com/_/postgres
+    environment:
+      <<: *default-environment
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${DOCKER_VOLUMES}/${PROJECT_NAME}/postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      <<: *default-healthcheck
+
+  redis:
+    <<: [*default-usage, *default-restart, *default-logging]
+    image: docker.io/library/redis:${REDIS_VERSION:-latest}
+    container_name: ${PROJECT_NAME}.redis
+    command: --save 60 1 --loglevel warning
+    environment:
+      <<: *default-environment
+    volumes:
+      - ${DOCKER_VOLUMES}/${PROJECT_NAME}/redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      <<: *default-healthcheck
+
+  geoipupdate:
+    <<: *default-base
+    image: ghcr.io/maxmind/geoipupdate:${GEOIPUPDATE_VERSION:-latest}
+    container_name: ${PROJECT_NAME}.geoipupdate
+    environment:
+      <<: *default-environment
+      GEOIPUPDATE_EDITION_IDS: ${GEOIPUPDATE_EDITION_IDS}
+      GEOIPUPDATE_FREQUENCY: ${GEOIPUPDATE_FREQUENCY}
+      GEOIPUPDATE_ACCOUNT_ID: ${GEOIPUPDATE_ACCOUNT_ID}
+      GEOIPUPDATE_LICENSE_KEY: ${GEOIPUPDATE_LICENSE_KEY}
+    volumes:
+      - "${DOCKER_VOLUMES}/${PROJECT_NAME}/geoip-data:/usr/share/GeoIP"
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD-SHELL", "geoipupdate -V"]
+      <<: *default-healthcheck
+
+  socket-proxy:
+    <<: [*default-usage, *default-restart, *default-logging]
+    image: lscr.io/linuxserver/socket-proxy:${SOCKET_PROXY_VERSION:-latest}
+    container_name: "${PROJECT_NAME}.socket-proxy"
+    environment:
+      <<: *default-environment
+      ALLOW_START: 0 #optional
+      ALLOW_STOP: 0 #optional
+      ALLOW_RESTARTS: 0 #optional
+      AUTH: 0 #optional
+      BUILD: 0 #optional
+      COMMIT: 0 #optional
+      CONFIGS: 0 #optional
+      CONTAINERS: 1 #optional
+      DISABLE_IPV6: 0 #optional
+      DISTRIBUTION: 0 #optional
+      EVENTS: 1 #optional
+      EXEC: 0 #optional
+      IMAGES: 1 #optional
+      INFO: 1 #optional
+      LOG_LEVEL: info #optional
+      NETWORKS: 0 #optional
+      NODES: 0 #optional
+      PING: 1 #optional
+      PLUGINS: 0 #optional
+      POST: 1 #optional
+      SECRETS: 0 #optional
+      SERVICES: 0 #optional
+      SESSION: 0 #optional
+      SWARM: 0 #optional
+      SYSTEM: 0 #optional
+      TASKS: 0 #optional
+      VERSION: 1 #optional
+      VOLUMES: 0 #optional
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    userns_mode: "host"
+    networks:
+      - socket_proxy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:2375/version"]
+      <<: *default-healthcheck
+    read_only: true
+    tmpfs:
+      - /run
+
+  server:
+    <<: *default-base
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-latest}
+    hostname: ${PROJECT_NAME}.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}  
+    container_name: ${PROJECT_NAME}.server
+    command: server
+    # ports:
+    # - 9000:9000
+    # - 9443:9443
+    environment:
+      <<: *default-environment
+      AUTHENTIK_REDIS__HOST: ${REDIS_HOST}
+      AUTHENTIK_POSTGRESQL__HOST: ${POSTGRES_HOST}
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+      AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: ${AUTHENTIK_DISABLE_STARTUP_ANALYTICS}
+      AUTHENTIK_DISABLE_UPDATE_CHECK: ${AUTHENTIK_DISABLE_UPDATE_CHECK}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED}
+      AUTHENTIK_LOG_LEVEL: ${AUTHENTIK_LOG_LEVEL}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN}
+      # AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS}
+    labels: ## Traefik Labels
+      - "traefik.enable=true"
+      - "traefik.docker.network=${PROXY_NETWORK}"
+        ## HTTP Routers
+      - "traefik.http.routers.$PROJECT_NAME-rtr.rule=
+        Host(`${SERVICE_NAME}.${DOMAIN_NAME}`) ||
+        Host(`${SERVICE_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}`) ||
+        Host(`${SERVICE_NAME}.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}`) ||
+        Host(`${PROJECT_NAME}.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}`)"
+        ## HTTP Services
+      - "traefik.http.services.$PROJECT_NAME-svc.loadbalancer.server.port=9000"
+        ## Komodo Labels
+      - "komodo.skip" # Prevent Komodo from stopping with StopAllContainers
+    volumes:
+    - ${DOCKER_VOLUMES}/${PROJECT_NAME}/authentik-data/media:/media
+    - ${DOCKER_VOLUMES}/${PROJECT_NAME}/authentik-data/templates:/templates
+    networks:
+      - frontend
+      - backend
+      - socket_proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000')"]
+      <<: *default-healthcheck
+      start_period: 30s
+
+  worker:
+    <<: *default-base
+    image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-latest}
+    container_name: ${PROJECT_NAME}.worker
+    command: worker
+    environment:
+      <<: *default-environment
+      DOCKER_HOST: tcp://${PROJECT_NAME}.socket-proxy:2375
+      AUTHENTIK_REDIS__HOST: ${REDIS_HOST}
+      AUTHENTIK_POSTGRESQL__HOST: ${POSTGRES_HOST}
+      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_USER}
+      AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_PASSWORD}
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: ${AUTHENTIK_DISABLE_STARTUP_ANALYTICS}
+      AUTHENTIK_DISABLE_UPDATE_CHECK: ${AUTHENTIK_DISABLE_UPDATE_CHECK}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED}
+      AUTHENTIK_LOG_LEVEL: ${AUTHENTIK_LOG_LEVEL}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY}
+      AUTHENTIK_COOKIE_DOMAIN: ${AUTHENTIK_COOKIE_DOMAIN}
+      # AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS: ${AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS}
+      AUTHENTIK_EMAIL__HOST: ${AUTHENTIK_EMAIL__HOST}
+      AUTHENTIK_EMAIL__PORT: ${AUTHENTIK_EMAIL__PORT}
+      AUTHENTIK_EMAIL__USERNAME: ${AUTHENTIK_EMAIL__USERNAME}
+      AUTHENTIK_EMAIL__PASSWORD: ${AUTHENTIK_EMAIL__PASSWORD}
+      AUTHENTIK_EMAIL__USE_TLS: ${AUTHENTIK_EMAIL__USE_TLS}
+      AUTHENTIK_EMAIL__USE_SSL: ${AUTHENTIK_EMAIL__USE_SSL}
+      AUTHENTIK_EMAIL__TIMEOUT: ${AUTHENTIK_EMAIL__TIMEOUT}
+      AUTHENTIK_EMAIL__FROM: ${AUTHENTIK_EMAIL__FROM}
+    volumes:
+    - ${DOCKER_VOLUMES}/${PROJECT_NAME}/authentik-data/media:/media
+    - ${DOCKER_VOLUMES}/${PROJECT_NAME}/authentik-data/certs:/certs
+    - ${DOCKER_VOLUMES}/${PROJECT_NAME}/authentik-data/templates:/templates
+    - ${DOCKER_VOLUMES}/${PROJECT_NAME}/geoip-data:/geoip
+    networks:
+      - backend
+      - socket_proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      socket-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000')"]
+      <<: *default-healthcheck
+
+networks:
+  frontend:
+    name: ${PROXY_NETWORK}
+    external: true
+  backend:
+    internal: true
+  socket_proxy:
+    internal: true
+    driver_opts:
+      encrypted: "true"
