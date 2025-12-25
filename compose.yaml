@@ -226,6 +226,7 @@ services:
     - ${DOCKER_VOLUMES}/${PROJECT_NAME}/authentik-data/templates:/templates
     - ${DOCKER_VOLUMES}/${PROJECT_NAME}/geoip-data:/geoip
     networks:
+      - forntend
       - backend
       - socket_proxy
     depends_on:
