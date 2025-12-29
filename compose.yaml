@@ -88,107 +88,6 @@ networks:
       encrypted: "true"
 
 services:
-  postgres:
-    <<: [*limits, *restart, *security, *logging]
-    image: docker.io/library/postgres:${POSTGRES_VERSION:-latest}
-    hostname: ${PROJECT_NAME}-postgres.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME} 
-    container_name: ${PROJECT_NAME}-postgres
-    shm_size: 128mb # https://hub.docker.com/_/postgres
-    environment:
-      <<: [*environment_tz, *environment_user]
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ${DOCKER_VOLUMES}/${PROJECT_NAME}/postgres_data:/var/lib/postgresql/data
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
-      <<: *default_healthcheck
-
-  redis:
-    <<: [*limits, *restart, *security, *logging]
-    image: docker.io/library/redis:${REDIS_VERSION:-latest}
-    hostname: ${PROJECT_NAME}-redis.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}  
-    container_name: ${PROJECT_NAME}-redis
-    command: --save 60 1 --loglevel warning
-    environment:
-      <<: [*environment_tz, *environment_user]
-    volumes:
-      - ${DOCKER_VOLUMES}/${PROJECT_NAME}/redis_data:/data
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
-      <<: *default_healthcheck
-
-  geoipupdate:
-    <<: [*limits, *restart, *security, *user, *logging]
-    image: ghcr.io/maxmind/geoipupdate:${GEOIPUPDATE_VERSION:-latest}
-    hostname: ${PROJECT_NAME}-geoipupdate.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}
-    container_name: ${PROJECT_NAME}-geoipupdate
-    environment:
-      <<: [*environment_tz, *environment_user]
-      GEOIPUPDATE_EDITION_IDS: ${GEOIPUPDATE_EDITION_IDS}
-      GEOIPUPDATE_FREQUENCY: ${GEOIPUPDATE_FREQUENCY}
-      GEOIPUPDATE_ACCOUNT_ID: ${GEOIPUPDATE_ACCOUNT_ID}
-      GEOIPUPDATE_LICENSE_KEY: ${GEOIPUPDATE_LICENSE_KEY}
-    volumes:
-      - "${DOCKER_VOLUMES}/${PROJECT_NAME}/geoip-data:/usr/share/GeoIP"
-    networks:
-      - frontend
-    healthcheck:
-      test: ["CMD-SHELL", "geoipupdate -V"]
-      <<: *default_healthcheck
-
-  socket-proxy:
-    <<: [*limits, *restart, *security, *logging]
-    image: lscr.io/linuxserver/socket-proxy:${SOCKET_PROXY_VERSION:-latest}
-    hostname: ${PROJECT_NAME}-socket-proxy.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}
-    container_name: "${PROJECT_NAME}-socket-proxy"
-    environment:
-      <<: [*environment_tz, *environment_user]
-      ALLOW_START: 0 #optional
-      ALLOW_STOP: 0 #optional
-      ALLOW_RESTARTS: 0 #optional
-      AUTH: 0 #optional
-      BUILD: 0 #optional
-      COMMIT: 0 #optional
-      CONFIGS: 0 #optional
-      CONTAINERS: 1 #optional
-      DISABLE_IPV6: 0 #optional
-      DISTRIBUTION: 0 #optional
-      EVENTS: 1 #optional
-      EXEC: 0 #optional
-      IMAGES: 1 #optional
-      INFO: 1 #optional
-      LOG_LEVEL: info #optional
-      NETWORKS: 0 #optional
-      NODES: 0 #optional
-      PING: 1 #optional
-      PLUGINS: 0 #optional
-      POST: 1 #optional
-      SECRETS: 0 #optional
-      SERVICES: 0 #optional
-      SESSION: 0 #optional
-      SWARM: 0 #optional
-      SYSTEM: 0 #optional
-      TASKS: 0 #optional
-      VERSION: 1 #optional
-      VOLUMES: 0 #optional
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - socket_proxy
-    userns_mode: "host"
-    read_only: true
-    tmpfs:
-      - /run
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:2375/version"]
-      <<: *default_healthcheck
-
   server:
     <<: [*limits, *restart, *security, *user, *logging]
     image: ghcr.io/goauthentik/server:${AUTHENTIK_VERSION:-latest}
@@ -295,4 +194,105 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000')"]
+      <<: *default_healthcheck
+
+  postgres:
+    <<: [*limits, *restart, *security, *logging]
+    image: docker.io/library/postgres:${POSTGRES_VERSION:-latest}
+    hostname: ${PROJECT_NAME}-postgres.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME} 
+    container_name: ${PROJECT_NAME}-postgres
+    shm_size: 128mb # https://hub.docker.com/_/postgres
+    environment:
+      <<: [*environment_tz, *environment_user]
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ${DOCKER_VOLUMES}/${PROJECT_NAME}/postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      <<: *default_healthcheck
+
+  redis:
+    <<: [*limits, *restart, *security, *logging]
+    image: docker.io/library/redis:${REDIS_VERSION:-latest}
+    hostname: ${PROJECT_NAME}-redis.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}  
+    container_name: ${PROJECT_NAME}-redis
+    command: --save 60 1 --loglevel warning
+    environment:
+      <<: [*environment_tz, *environment_user]
+    volumes:
+      - ${DOCKER_VOLUMES}/${PROJECT_NAME}/redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      <<: *default_healthcheck
+
+  geoipupdate:
+    <<: [*limits, *restart, *security, *user, *logging]
+    image: ghcr.io/maxmind/geoipupdate:${GEOIPUPDATE_VERSION:-latest}
+    hostname: ${PROJECT_NAME}-geoipupdate.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}
+    container_name: ${PROJECT_NAME}-geoipupdate
+    environment:
+      <<: [*environment_tz, *environment_user]
+      GEOIPUPDATE_EDITION_IDS: ${GEOIPUPDATE_EDITION_IDS}
+      GEOIPUPDATE_FREQUENCY: ${GEOIPUPDATE_FREQUENCY}
+      GEOIPUPDATE_ACCOUNT_ID: ${GEOIPUPDATE_ACCOUNT_ID}
+      GEOIPUPDATE_LICENSE_KEY: ${GEOIPUPDATE_LICENSE_KEY}
+    volumes:
+      - "${DOCKER_VOLUMES}/${PROJECT_NAME}/geoip-data:/usr/share/GeoIP"
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD-SHELL", "geoipupdate -V"]
+      <<: *default_healthcheck
+
+  socket-proxy:
+    <<: [*limits, *restart, *security, *logging]
+    image: lscr.io/linuxserver/socket-proxy:${SOCKET_PROXY_VERSION:-latest}
+    hostname: ${PROJECT_NAME}-socket-proxy.${SERVER_NAME}.${SUB_DOMAIN_NAME}${DOMAIN_NAME}
+    container_name: "${PROJECT_NAME}-socket-proxy"
+    environment:
+      <<: [*environment_tz, *environment_user]
+      ALLOW_START: 0 #optional
+      ALLOW_STOP: 0 #optional
+      ALLOW_RESTARTS: 0 #optional
+      AUTH: 0 #optional
+      BUILD: 0 #optional
+      COMMIT: 0 #optional
+      CONFIGS: 0 #optional
+      CONTAINERS: 1 #optional
+      DISABLE_IPV6: 0 #optional
+      DISTRIBUTION: 0 #optional
+      EVENTS: 1 #optional
+      EXEC: 0 #optional
+      IMAGES: 1 #optional
+      INFO: 1 #optional
+      LOG_LEVEL: info #optional
+      NETWORKS: 0 #optional
+      NODES: 0 #optional
+      PING: 1 #optional
+      PLUGINS: 0 #optional
+      POST: 1 #optional
+      SECRETS: 0 #optional
+      SERVICES: 0 #optional
+      SESSION: 0 #optional
+      SWARM: 0 #optional
+      SYSTEM: 0 #optional
+      TASKS: 0 #optional
+      VERSION: 1 #optional
+      VOLUMES: 0 #optional
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - socket_proxy
+    userns_mode: "host"
+    read_only: true
+    tmpfs:
+      - /run
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:2375/version"]
       <<: *default_healthcheck
